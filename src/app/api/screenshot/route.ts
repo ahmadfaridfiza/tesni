@@ -1,71 +1,51 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const urlParam = searchParams.get("url");
-  if (!urlParam) {
-    return new NextResponse("Please provide a URL.", { status: 400 });
-  }
-
-  // Prepend http:// if missing
-  let inputUrl = urlParam.trim();
-  if (!/^https?:\/\//i.test(inputUrl)) {
-    inputUrl = `http://${inputUrl}`;
-  }
-
-  // Validate the URL is a valid HTTP/HTTPS URL
-  let parsedUrl: URL;
   try {
-    parsedUrl = new URL(inputUrl);
-    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-      return new NextResponse("URL must start with http:// or https://", {
-        status: 400,
-      });
-    }
-  } catch {
-    return new NextResponse("Invalid URL provided.", { status: 400 });
-  }
+    const { searchParams } = new URL(request.url);
+    const url = searchParams.get('url');
 
-  let browser;
-  try {
-    const isVercel = !!process.env.VERCEL_ENV;
-    let puppeteer: any,
-      launchOptions: any = {
-        headless: true,
-      };
+    console.log('API called with URL:', url);
 
-    if (isVercel) {
-      const chromium = (await import("@sparticuz/chromium")).default;
-      puppeteer = await import("puppeteer-core");
-      launchOptions = {
-        ...launchOptions,
-        args: chromium.args,
-        executablePath: await chromium.executablePath(),
-      };
-    } else {
-      puppeteer = await import("puppeteer");
+    if (!url) {
+      return NextResponse.json(
+        { error: 'URL parameter is required' },
+        { status: 400 }
+      );
     }
 
-    browser = await puppeteer.launch(launchOptions);
-    const page = await browser.newPage();
-    await page.goto(parsedUrl.toString(), { waitUntil: "networkidle2" });
-    const screenshot = await page.screenshot({ type: "png" });
-    return new NextResponse(screenshot, {
-      headers: {
-        "Content-Type": "image/png",
-        "Content-Disposition": 'inline; filename="screenshot.png"',
-      },
+    // Validate URL
+    let targetUrl: string;
+    try {
+      targetUrl = url.startsWith('http') ? url : `https://${url}`;
+      new URL(targetUrl);
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid URL format' },
+        { status: 400 }
+      );
+    }
+
+    // Return simple success response
+    return NextResponse.json({
+      success: true,
+      message: 'API is working!',
+      url: targetUrl,
+      timestamp: new Date().toISOString()
     });
-  } catch (error) {
-    console.error(error);
-    return new NextResponse(
-      "An error occurred while generating the screenshot.",
+
+  } catch (error: any) {
+    console.error('API Error:', error);
+    return NextResponse.json(
+      { 
+        error: 'Internal server error',
+        details: error.message 
+      },
       { status: 500 }
     );
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
   }
 }
+
+export const config = {
+  runtime: 'nodejs',
+};
