@@ -1,48 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
+import chromium from '@sparticuz/chromium';
+import puppeteer from 'puppeteer-core';
 
 export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const url = searchParams.get('url');
+
+  if (!url) {
+    return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+  }
+
+  let browser = null;
+  
   try {
-    const { searchParams } = new URL(request.url);
-    const url = searchParams.get('url');
+    const targetUrl = url.startsWith('http') ? url : `https://${url}`;
+    
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    });
 
-    console.log('API called with URL:', url);
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 720 });
+    await page.setDefaultNavigationTimeout(20000);
 
-    if (!url) {
-      return NextResponse.json(
-        { error: 'URL parameter is required' },
-        { status: 400 }
-      );
-    }
+    await page.goto(targetUrl, { 
+      waitUntil: 'networkidle2'
+    });
 
-    // Validate URL
-    let targetUrl: string;
-    try {
-      targetUrl = url.startsWith('http') ? url : `https://${url}`;
-      new URL(targetUrl);
-    } catch {
-      return NextResponse.json(
-        { error: 'Invalid URL format' },
-        { status: 400 }
-      );
-    }
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Return simple success response
-    return NextResponse.json({
-      success: true,
-      message: 'API is working!',
-      url: targetUrl,
-      timestamp: new Date().toISOString()
+    const screenshot = await page.screenshot({
+      type: 'png',
+      fullPage: false,
+    });
+
+    // Solusi paling sederhana - cast ke any sementara
+    return new NextResponse(screenshot as any, {
+      headers: {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'public, max-age=300',
+      },
     });
 
   } catch (error: any) {
-    console.error('API Error:', error);
+    console.error('Screenshot error:', error);
     return NextResponse.json(
-      { 
-        error: 'Internal server error',
-        details: error.message 
-      },
+      { error: error.message || 'Failed to capture screenshot' },
       { status: 500 }
     );
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
   }
 }
 
